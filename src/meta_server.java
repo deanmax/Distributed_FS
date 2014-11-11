@@ -12,6 +12,8 @@ public class meta_server {
 	
 	public static void main(String[] args) {
 		// meta data table
+		// Ex:
+		// {filename, [MetaData, MetaData, ...]}
 		ConcurrentHashMap<String, ArrayList<MetaData>> meta_table = 
 				new ConcurrentHashMap<String, ArrayList<MetaData>>();
 		
