@@ -103,15 +103,15 @@ class HeartBeat extends Thread {
 	
 		// scan all local files, populate local metadata table
 		for (File file : listOfFiles) {
-		    if (!file.isFile()) continue;
+			if (!file.isFile()) continue;
 		    	
-	        String filename = file.getName();
-	        // only want files with [filename]_[numeric] format
-	        if (filename.split("_").length == 1 || 
-	        	!filename.split("_")[1].matches("^\\d+$")) continue;
-		    
-	        int file_size = (int) file.length();
-	        file_meta.put(filename, file_size);
+			String filename = file.getName();
+			// only want files with [filename]_[numeric] format
+			if (filename.split("_").length == 1 || 
+				!filename.split("_")[1].matches("^\\d+$")) continue;
+			
+			int file_size = (int) file.length();
+			file_meta.put(filename, file_size);
 		}
 					
 		while (true) {
