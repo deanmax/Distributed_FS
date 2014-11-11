@@ -64,15 +64,19 @@ class Operation extends Thread {
 		try {
 			DataOutputStream output = new DataOutputStream(socket.getOutputStream());
 			
+			
+			
+			// update local meta data
+			// atomic operation
+			synchronized(file_meta) {
+				
+			}
+			
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
 		
-		
-		// atomic operation
-		synchronized(file_meta) {
-			
-		}
+
 	}
 }
 
