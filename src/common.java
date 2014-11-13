@@ -3,17 +3,23 @@ import java.io.Serializable;
 @SuppressWarnings("serial")
 class MetaRequest implements Serializable {
 	ReqType type;
-	String filename; // filename to read/write/append
-	int length;      // length of the text for read/write/append
-	int pos = 0;     // starting position for read
+	String filename = "";  // filename to read/write/append
+	int length = 0;        // length of the text for read/write/append
+	int pos = 0;           // starting position for read
+	boolean result = true; // write/append result. Flag for recording metadata
 	
-	MetaRequest (ReqType type, String filename, int length) {
+	MetaRequest(ReqType type, boolean result) {
+		this.type = type;
+		this.result = result;
+	}
+	
+	MetaRequest(ReqType type, String filename, int length) {
 		this.type = type;
 		this.filename = filename;
 		this.length = length;
 	}
 	
-	MetaRequest (ReqType type, String filename, int pos, int length) {
+	MetaRequest(ReqType type, String filename, int pos, int length) {
 		this.type = type;
 		this.filename = filename;
 		this.pos = pos;
@@ -33,7 +39,10 @@ class MetaResponse implements Serializable {
 }
 
 enum ReqType {
-    READ, CREATE, APPEND, HEARTBEAT
+    READ, CREATE, APPEND,   // request initiated from client
+    HEARTBEAT,              // request initiated from file server
+    RESULT,                 // send from client, indicate if metadata is good to commit
+    PURGE                   // request initiated from meta server to file server
 }
 
 //operation request

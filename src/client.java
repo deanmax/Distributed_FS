@@ -54,6 +54,7 @@ public class client {
 					}
 					
 					// send write request to file server
+					boolean write_result = true;
 					for (int i = 0; i < meta_res.file_server.length; i++) {
 						String server = meta_res.file_server[i];
 						String blk = filename + "_" + i;
@@ -91,10 +92,16 @@ public class client {
             			
 						} while (redo == true && retry < 3);
             			
-						if (retry == 3) System.out.println("Write " +blk+ "(" +meta_res.eff_length[i]+ 
+						if (retry == 3) {
+							System.out.println("Write " +blk+ "(" +meta_res.eff_length[i]+ 
 									") to file server " +server+ " FAILED!");
-						
+							write_result = false;
+						}
 					}
+					
+					// reply write result back to meta server
+					MetaRequest result = new MetaRequest(ReqType.RESULT, write_result);
+					m_output.writeObject(result);
 					
 				}
 				
