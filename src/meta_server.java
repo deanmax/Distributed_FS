@@ -26,10 +26,18 @@ public class meta_server {
 		// start meta data table validation process
 		new Validator(meta_table, alive_server).start();
 		
+		ServerSocket listenSocket = null;
 		try {
-			ServerSocket listenSocket = new ServerSocket(8821);
+			listenSocket = new ServerSocket(8821);
 			System.out.println("Start listening on port 8821...");
-			while (true) {
+		} catch (IOException e) {
+			System.out.println("Exception: Error opening port 8821. "+e.getMessage());
+			System.exit(2);
+		}
+			
+		
+		while (true) {
+			try {
 				Socket clientSocket = listenSocket.accept();
 				String from_host = clientSocket.getInetAddress().getHostName().split("\\.")[0];
 				ObjectInputStream input = new ObjectInputStream(clientSocket.getInputStream());
@@ -43,6 +51,7 @@ public class meta_server {
 				if (t == ReqType.HEARTBEAT) {
 					@SuppressWarnings("unchecked")
 					ArrayList<MetaRequest> hb = (ArrayList<MetaRequest>) input.readObject();
+					if (!alive_server.contains(from_host)) alive_server.add(from_host);
 					
 					if (hb.size() == 0) continue;
 					
@@ -59,7 +68,6 @@ public class meta_server {
 								meta_to_update.isValid = true;
 								meta_to_update.update_time = timestamp;
 								meta_to_update.f_server = from_host;
-								if (!alive_server.contains(from_host)) alive_server.add(from_host);
 							}
 						}
 					}
@@ -70,11 +78,58 @@ public class meta_server {
 				else if (t == ReqType.CREATE) {
 					MetaRequest req = (MetaRequest) input.readObject();
 					
-					
 					// need to remove existing file entry
+					String filename = req.filename;
+					synchronized(meta_table) {
+						meta_table.remove(filename);
+					}
+					
+					int num_of_blks = req.length / 8192;
+					int remainder = req.length % 8192;
+					int elements = remainder>0 ? num_of_blks+1 : num_of_blks;
+					
+					String[] alloc_server;
+					int[] alloc_length;
+					
+					if (alive_server.size() == 0) {
+						alloc_server = new String[0];
+						alloc_length = new int[0];
+					} else {
+						alloc_server = new String[elements];
+						alloc_length = new int[elements];
+						
+						for (int i=0; i<elements; i++) {
+							// choose a random alive server to write to
+							int rand = (int)(Math.random()*alive_server.size());
+							alloc_server[i] = alive_server.get(rand);
+							alloc_length[i] = (i==elements-1) ? remainder : 8192;
+						}
+					}
+					
+					MetaResponse res = new MetaResponse();
+					res.file_server = alloc_server;
+					res.eff_length = alloc_length;
+					output.writeObject(res);
+					
 					
 					// need to wait for client reply job done to update meta_table
+					MetaRequest confirm = (MetaRequest) input.readObject();
 					
+					if (confirm.type == ReqType.RESULT && confirm.result) {
+						List<MetaData> meta_entries = Collections.synchronizedList(new ArrayList<MetaData>());
+						for (int i=0; i<elements; i++) {
+							MetaData entry = new MetaData();
+							entry.f_server = alloc_server[i];
+							entry.eff_length = alloc_length[i];
+							entry.blk_id = i;
+							entry.filename = filename;
+							entry.update_time = timestamp;
+							meta_entries.add(entry);
+						}
+						synchronized(meta_table) {
+							meta_table.put(filename, meta_entries);
+						}
+					}
 				}
 				
 				
@@ -87,10 +142,9 @@ public class meta_server {
 				else if (t == ReqType.READ) {
 					
 				}
-				
-			}
-		} catch (IOException | ClassNotFoundException e) {
-			System.out.println("Exception: "+e.getMessage());
+			} catch (IOException | ClassNotFoundException e) {
+				System.out.println("Exception: "+e.getMessage());
+		    }
 		}
 	}
 }

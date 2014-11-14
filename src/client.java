@@ -1,7 +1,6 @@
 import java.io.BufferedReader;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
-import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.ObjectInputStream;
@@ -23,7 +22,6 @@ public class client {
 		try {
 			String m_server = "dc30";  //hardcode dc30 as metadata server
 			Socket m_s = new Socket(m_server + ".utdallas.edu", 8821);  // socket connection to metadata server
-			ObjectInputStream m_input = new ObjectInputStream(m_s.getInputStream());
 			ObjectOutputStream m_output = new ObjectOutputStream(m_s.getOutputStream());
 			
 			br = new BufferedReader(new FileReader(input_file));
@@ -40,10 +38,11 @@ public class client {
 				if (ops.equalsIgnoreCase("w")) {
 					String text = line.split("\\|")[2];  // text to byte array
 					
+					m_output.writeObject(ReqType.CREATE);
 					MetaRequest w_req = new MetaRequest(ReqType.CREATE, filename, text.length());
 					m_output.writeObject(w_req);
 					
-					while (m_input.available() == 0) {}  // wait for available input stream
+					ObjectInputStream m_input = new ObjectInputStream(m_s.getInputStream());
 					MetaResponse meta_res = (MetaResponse) m_input.readObject();
 					
 					// check allocated file servers
@@ -74,7 +73,6 @@ public class client {
 								ObjectOutputStream f_output = new ObjectOutputStream(s.getOutputStream());
 	                			
 								f_output.writeObject(req);
-								while (f_input.available() == 0) {}
 								char f_response = f_input.readChar();
 								
 								if (f_response == 'n') {
@@ -111,10 +109,11 @@ public class client {
 				else if (ops.equalsIgnoreCase("a")) {
 					byte[] text = line.split("\\|")[2].getBytes();
 					
+					m_output.writeObject(ReqType.APPEND);
 					MetaRequest a_req = new MetaRequest(ReqType.APPEND, filename, text.length);
 					m_output.writeObject(a_req);
 					
-					while (m_input.available() == 0) {}  // wait for available input stream
+					ObjectInputStream m_input = new ObjectInputStream(m_s.getInputStream());
 					MetaResponse meta_res = (MetaResponse) m_input.readObject();
 					
 					// check allocated file servers
