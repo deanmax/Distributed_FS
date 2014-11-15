@@ -1,5 +1,6 @@
 import java.io.Serializable;
 
+
 @SuppressWarnings("serial")
 class MetaRequest implements Serializable {
 	ReqType type;
@@ -27,6 +28,7 @@ class MetaRequest implements Serializable {
 	}
 }
 
+
 @SuppressWarnings("serial")
 class MetaResponse implements Serializable {
 	String[] file_server = {};   // file server name of current index block
@@ -38,12 +40,6 @@ class MetaResponse implements Serializable {
 	
 }
 
-enum ReqType {
-    READ, CREATE, APPEND,   // request initiated from client
-    HEARTBEAT,              // request initiated from file server
-    RESULT,                 // send from client, indicate if metadata is good to commit
-    PURGE                   // request initiated from meta server to file server
-}
 
 //operation request
 @SuppressWarnings("serial")
@@ -73,4 +69,24 @@ class OpsRequest implements Serializable {
 		this.pos = pos;
 		this.read_length = read_length;
 	}
+}
+
+
+@SuppressWarnings("serial")
+class MetaData implements Serializable {
+	boolean isValid = true;
+	int blk_id = 0;
+	int eff_length = 0;
+	long update_time = 0;
+	String filename = "";
+	String f_server = "";
+}
+
+
+enum ReqType {
+    READ, CREATE, APPEND,   // request initiated from client
+    HEARTBEAT,              // request initiated from file server
+    RESULT,                 // send from client, indicate if metadata is good to commit
+    PROBE,                  // request initiated from file server asking for meta data
+    PURGE                   // request initiated from meta server to purge files on file server
 }

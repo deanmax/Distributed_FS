@@ -75,6 +75,21 @@ public class meta_server {
 				}
 				
 				
+				else if (t == ReqType.PROBE) {
+					/*
+					// - test -
+					List<MetaData> meta_entries = Collections.synchronizedList(new ArrayList<MetaData>());
+                    MetaData entry = new MetaData();
+                    entry.filename = "asdf";
+                    entry.blk_id = 0;
+                    entry.f_server = "dc31";
+                    meta_entries.add(entry);
+                    meta_table.put("asdf", meta_entries);
+                    */
+					output.writeObject(meta_table);
+				}
+				
+				
 				else if (t == ReqType.CREATE) {
 					MetaRequest req = (MetaRequest) input.readObject();
 					
@@ -196,13 +211,4 @@ class Validator extends Thread {
 			}
 		}  // end while
 	}
-}
-
-class MetaData {
-	boolean isValid = true;
-	int blk_id = 0;
-	int eff_length = 0;
-	long update_time = 0;
-	String filename = "";
-	String f_server = "";
 }

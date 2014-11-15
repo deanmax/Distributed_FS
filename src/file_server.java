@@ -2,7 +2,6 @@ import java.io.BufferedWriter;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.ObjectInputStream;
@@ -12,6 +11,8 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -19,6 +20,11 @@ import java.util.concurrent.ConcurrentHashMap;
 public class file_server {
 	
 	public static void main(String[] args) {
+		// local file storage meta data
+		// Format:
+		// key: blk_name, value: blk_size
+		final ConcurrentHashMap<String, Integer> file_meta = new ConcurrentHashMap<String, Integer>();
+		
 		final String m_server = "dc30";  // hardcode dc30 as metadata server
 		String hostname = "";
 		try {
@@ -28,14 +34,57 @@ public class file_server {
 			System.exit(2);
 		}
 		
-		// local file storage meta data
-		// Format:
-		// key: blk_name, value: blk_size
-		final ConcurrentHashMap<String, Integer> file_meta = new ConcurrentHashMap<String, Integer>();
+		
+		// on start, probe meta server for local file validation
+		try {
+			Socket m_s = new Socket(m_server + ".utdallas.edu", 8821);
+			
+			ObjectOutputStream m_output = new ObjectOutputStream(m_s.getOutputStream());
+			ObjectInputStream m_input = new ObjectInputStream(m_s.getInputStream());
+			
+			m_output.writeObject(ReqType.PROBE);
+			@SuppressWarnings("unchecked")
+			ConcurrentHashMap<String, List<MetaData>> meta_table = 
+					(ConcurrentHashMap<String, List<MetaData>>) m_input.readObject();
+			
+			
+			File folder = new File("./"+hostname);
+			// create if there isn't one
+			folder.mkdir();
+			File[] listOfFiles = folder.listFiles();
+			
+			// delete invalid local files
+			for (File file : listOfFiles) {
+				Iterator<List<MetaData>> it = meta_table.values().iterator();
+				if (!it.hasNext()) {
+					file.delete();
+					continue;
+				}
+				
+				while (it.hasNext()) {
+					List<MetaData> entries = it.next();
+					Iterator<MetaData> iter = entries.iterator();
+					while (iter.hasNext()) {
+						MetaData entry = iter.next();
+						
+						if (entry.f_server.equals(hostname) && 
+								file.getName().equals(entry.filename+"_"+entry.blk_id)) {
+							break;
+						}
+						
+						file.delete();
+					}
+				}
+			}
+			
+		} catch (IOException | ClassNotFoundException e) {
+			System.out.println("Error contacting meta server!");
+			System.exit(2);
+		}
 		
 		
 		// start a thread to send heartbeat to meta server
-		new HeartBeat(file_meta, hostname).start();
+		new HeartBeat(file_meta).start();
 		
 		try {
 			ServerSocket listenSocket = new ServerSocket(8822);
@@ -53,8 +102,7 @@ public class file_server {
 			System.out.println("Server Exception: "+e.getMessage());
 		}
 		
-		
-	}
+	} // end of main
 }
 
 
@@ -115,35 +163,12 @@ class Operation extends Thread {
 
 class HeartBeat extends Thread {
 	ConcurrentHashMap<String, Integer> file_meta;
-	String hostname;
 	
-	public HeartBeat(ConcurrentHashMap<String, Integer> file_meta, String hostname) {
+	public HeartBeat(ConcurrentHashMap<String, Integer> file_meta) {
 		this.file_meta = file_meta;
-		this.hostname = hostname;
 	}
 	
-	public void run() {
-		// create subdir named with server hostname if there isn't one
-		File folder = new File("./"+hostname);
-		folder.mkdir();
-		File[] listOfFiles = folder.listFiles();
-	
-		// delete all existing files
-		for (File file : listOfFiles) {
-			file.delete();
-			/*
-			if (!file.isFile()) continue;
-		    	
-			String filename = file.getName();
-			// only want files with [filename]_[numeric] format
-			if (filename.split("_").length == 1 || 
-				!filename.split("_")[1].matches("^\\d+$")) continue;
-			
-			int file_size = (int) file.length();
-			file_meta.put(filename, file_size);
-			*/
-		}
-					
+	public void run() {			
 		while (true) {
 			try {
 				// send heartbeat to meta server
@@ -151,7 +176,6 @@ class HeartBeat extends Thread {
 				Socket m_s = new Socket(m_server + ".utdallas.edu", 8821);
 				
 				ObjectOutputStream m_output = new ObjectOutputStream(m_s.getOutputStream());
-				DataInputStream m_input = new DataInputStream(m_s.getInputStream());
 				
 				// heart beat message is an ArrayList with each element having block_name and size
 				ArrayList<MetaRequest> hb = new ArrayList<MetaRequest>();
