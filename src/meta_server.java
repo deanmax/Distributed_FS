@@ -40,8 +40,8 @@ public class meta_server {
 			try {
 				Socket clientSocket = listenSocket.accept();
 				String from_host = clientSocket.getInetAddress().getHostName().split("\\.")[0];
-				ObjectInputStream input = new ObjectInputStream(clientSocket.getInputStream());
 				ObjectOutputStream output = new ObjectOutputStream(clientSocket.getOutputStream());
+				ObjectInputStream input = new ObjectInputStream(clientSocket.getInputStream());
 				
 				ReqType t = (ReqType) input.readObject();
 				long timestamp = System.currentTimeMillis();
@@ -52,6 +52,14 @@ public class meta_server {
 					@SuppressWarnings("unchecked")
 					ArrayList<MetaRequest> hb = (ArrayList<MetaRequest>) input.readObject();
 					if (!alive_server.contains(from_host)) alive_server.add(from_host);
+					
+					/*
+					// - Test -
+					for (String s : alive_server) {
+                        System.out.print(s+", ");
+                    }
+                    System.out.println();
+					*/
 					
 					if (hb.size() == 0) continue;
 					
@@ -155,8 +163,79 @@ public class meta_server {
 				
 				
 				else if (t == ReqType.READ) {
+					MetaRequest req = (MetaRequest) input.readObject();
 					
+					String filename = req.filename;
+					int req_length = req.length;  // read length from request
+					
+					if (!meta_table.containsKey(filename)) {
+						// reply with empty response
+						MetaResponse res = new MetaResponse();
+						output.writeObject(res);
+						continue;
+					}
+					
+					int start_blk_id = req.pos / 8192;
+					
+					/*
+					if (req.pos % 8192 + req.length <= 8192) {
+						MetaResponse res = new MetaResponse();
+						// if file server down, reply with empty response
+						if (!meta_table.get(filename).get(start_blk_id).isValid) {
+							output.writeObject(res);
+							continue;
+						}
+						
+						f_server = new String[] {meta_table.get(filename).get(start_blk_id).f_server};
+						start_pos = new int[] {req.pos % 8192};
+						read_length = new int[] {req.length};
+						res.file_server  = f_server;
+						res.eff_length   = read_length;
+						res.pos          = start_pos;
+						res.start_blk_id = start_blk_id;
+						
+						output.writeObject(res);
+						continue;
+					*/
+					
+					MetaResponse res = new MetaResponse();
+					ArrayList<String> al_f_server     = new ArrayList<String>();
+					ArrayList<Integer> al_start_pos   = new ArrayList<Integer>();
+					ArrayList<Integer> al_read_length = new ArrayList<Integer>();
+					
+					for (int i = (req.length + req.pos % 8192), j = 0; i > 0; i -= 8192, j++) {
+						if (!meta_table.get(filename).get(start_blk_id+j).isValid) {
+							output.writeObject(res);
+							break;
+						}
+						al_f_server.add(meta_table.get(filename).get(start_blk_id+j).f_server);
+						
+						if (j == 0) {
+							al_start_pos.add(req.pos % 8192);
+							int act_len = (req_length + req.pos % 8192 - 8192) > 0 ? (8192 - req.pos % 8192) : req_length;
+							req_length -= act_len;
+							al_read_length.add(act_len);
+						} else {
+							al_start_pos.add(0);
+							al_read_length.add((req_length - 8192) > 0 ? 8192 : req_length);
+							req_length -= 8192;
+						}
+					}
+					
+					res.file_server  = al_f_server.toArray(new String[al_f_server.size()]);
+					res.eff_length   = new int[al_read_length.size()];
+					res.pos          = new int[al_start_pos.size()];
+					res.start_blk_id = start_blk_id;
+					
+					for (int i = 0; i < al_start_pos.size(); i++) {
+						res.eff_length[i] = al_read_length.get(i);
+						res.pos[i] = al_start_pos.get(i);
+					}
+					
+					output.writeObject(res);
 				}
+				
+				
 			} catch (IOException | ClassNotFoundException e) {
 				System.out.println("Exception: "+e.getMessage());
 		    }
@@ -209,6 +288,7 @@ class Validator extends Thread {
 					}
 				}
 			}
+			
 		}  // end while
 	}
 }

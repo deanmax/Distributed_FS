@@ -31,13 +31,13 @@ class MetaRequest implements Serializable {
 
 @SuppressWarnings("serial")
 class MetaResponse implements Serializable {
-	String[] file_server = {};   // file server name of current index block
-	int[] eff_length = {};       // effective byte length of index block
+	String[] file_server = {};   // file server name of index'ed block
+	int[] eff_length = {};       // effective byte length of index'ed block
+	int[] pos = {};              // starting position for read/append
+	int start_blk_id = 0;        // offset of block index
 	
 	boolean isNull = false;      // flag indicating if the last block should be
-							     // filled with \0 for append
-	int pos = 0;                 // starting position for append
-	
+    							 // filled with \0 for append
 }
 
 
@@ -66,6 +66,7 @@ class OpsRequest implements Serializable {
 	// READ request
 	OpsRequest(ReqType type, String block, int pos, int read_length) {
 		this.type = type;
+		this.block = block;
 		this.pos = pos;
 		this.read_length = read_length;
 	}
@@ -87,6 +88,6 @@ enum ReqType {
     READ, CREATE, APPEND,   // request initiated from client
     HEARTBEAT,              // request initiated from file server
     RESULT,                 // send from client, indicate if metadata is good to commit
-    PROBE,                  // request initiated from file server asking for meta data
-    PURGE                   // request initiated from meta server to purge files on file server
+    PROBE                   // request initiated from file server asking for meta data
+    //PURGE                   // request initiated from meta server to purge files on file server
 }

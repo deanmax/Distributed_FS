@@ -1,7 +1,8 @@
+import java.io.BufferedReader;
 import java.io.BufferedWriter;
-import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
+import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.ObjectInputStream;
@@ -69,6 +70,9 @@ public class file_server {
 						
 						if (entry.f_server.equals(hostname) && 
 								file.getName().equals(entry.filename+"_"+entry.blk_id)) {
+							synchronized(file_meta) {
+								file_meta.put(entry.filename+"_"+entry.blk_id, entry.eff_length);
+							}
 							break;
 						}
 						
@@ -122,41 +126,84 @@ class Operation extends Thread {
 	}
 	
 	public void run() {
-		String blks = req.block;
-		String text = req.text;
-		boolean ops_fail = false;
-		try {
-			FileWriter fw = new FileWriter("./"+hostname+"/"+blks, false);
-			BufferedWriter bw = new BufferedWriter(fw);
-			bw.write(text);
-			bw.flush();
-			bw.close();
-			
-			// update local meta data
-			// atomic operation
-			synchronized(file_meta) {
-				if (file_meta.containsKey(blks)) {
-					file_meta.replace(blks, text.length());
-				} else {
-					file_meta.put(blks, text.length());
+		
+		// write request
+		if (req.type == ReqType.CREATE) {
+			String blk = req.block;
+			String text = req.text;
+			boolean ops_fail = false;
+			try {
+				FileWriter fw = new FileWriter("./"+hostname+"/"+blk, false);
+				BufferedWriter bw = new BufferedWriter(fw);
+				bw.write(text);
+				bw.flush();
+				bw.close();
+				
+				// update local meta data
+				// atomic operation
+				synchronized(file_meta) {
+					if (file_meta.containsKey(blk)) {
+						file_meta.replace(blk, text.length());
+					} else {
+						file_meta.put(blk, text.length());
+					}
 				}
+			} catch (IOException e) {
+				ops_fail = true;
+				e.printStackTrace();
 			}
-		} catch (IOException e) {
-			ops_fail = true;
-			e.printStackTrace();
+			
+			// send ops result back to client
+			try {
+				DataOutputStream to_client = new DataOutputStream(socket.getOutputStream());
+				if (ops_fail) {
+					to_client.writeChar('n');
+				} else {
+					to_client.writeChar('y');
+				}
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
 		}
 		
-		// send ops result back to client
-		try {
-			DataOutputStream to_client = new DataOutputStream(socket.getOutputStream());
-			if (ops_fail) {
-				to_client.writeChar('n');
-			} else {
-				to_client.writeChar('y');
-			}
-		} catch (IOException e) {
-			e.printStackTrace();
+		// append request
+		else if (req.type == ReqType.APPEND) {
+			
 		}
+		
+		// read request
+		else if (req.type == ReqType.READ) {
+			String blk = req.block;
+			int pos = req.pos;
+			int read_length = req.read_length;
+			char[] buffer = new char[read_length];
+			boolean ops_fail = false;
+			
+			FileReader fr;
+			try {
+				fr = new FileReader("./"+hostname+"/"+blk);
+				BufferedReader br = new BufferedReader(fr);
+				br.skip(pos);
+				br.read(buffer, 0, read_length);
+				br.close();
+			} catch (IOException e) {
+				ops_fail = true;
+				e.printStackTrace();
+			}
+			
+			// send ops result back to client
+			try {
+				ObjectOutputStream to_client = new ObjectOutputStream(socket.getOutputStream());
+				if (ops_fail) {
+					to_client.writeObject("");
+				} else {
+					to_client.writeObject(String.valueOf(buffer));
+				}
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		}
+		
 	}
 }
 
@@ -168,7 +215,7 @@ class HeartBeat extends Thread {
 		this.file_meta = file_meta;
 	}
 	
-	public void run() {			
+	public void run() {
 		while (true) {
 			try {
 				// send heartbeat to meta server
