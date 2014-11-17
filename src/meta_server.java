@@ -192,7 +192,13 @@ public class meta_server {
 						blk_to_start += 1;
 					} else if (meta_table.get(filename).get(blk_to_start).eff_length < 8192) {
 						int remain_size = 8192 - meta_table.get(filename).get(blk_to_start).eff_length;
-						append_len -= remain_size / 2048 * 2048;
+						
+						if (remain_size >= append_len) {
+							append_len = 0;
+						} else {
+							append_len -= remain_size / 2048 * 2048;
+						}
+						
 						al_f_server.add(meta_table.get(filename).get(blk_to_start).f_server);
 						al_append_len.add(remain_size);
 					} else {

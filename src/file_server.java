@@ -55,16 +55,16 @@ public class file_server {
 			File[] listOfFiles = folder.listFiles();
 			
 			// delete invalid local files
-			for (File file : listOfFiles) {
-				Iterator<List<MetaData>> it = meta_table.values().iterator();
+			OUTER: for (File file : listOfFiles) {
+				Iterator<String> it = meta_table.keySet().iterator();
 				if (!it.hasNext()) {
 					file.delete();
 					continue;
 				}
 				
 				while (it.hasNext()) {
-					List<MetaData> entries = it.next();
-					Iterator<MetaData> iter = entries.iterator();
+					String key = it.next();
+					Iterator<MetaData> iter = meta_table.get(key).iterator();
 					while (iter.hasNext()) {
 						MetaData entry = iter.next();
 						
@@ -73,12 +73,12 @@ public class file_server {
 							synchronized(file_meta) {
 								file_meta.put(entry.filename+"_"+entry.blk_id, entry.eff_length);
 							}
-							break;
+							continue OUTER;
 						}
-						
-						file.delete();
 					}
 				}
+				
+				file.delete();
 			}
 			
 		} catch (IOException | ClassNotFoundException e) {
@@ -130,7 +130,20 @@ class Operation extends Thread {
 		// write request
 		if (req.type == ReqType.CREATE) {
 			String blk = req.block;
+			String filename = blk.split("_")[0];
 			String text = req.text;
+			
+			// remove all local metadata regarding requested file block
+			synchronized(file_meta) {
+				Iterator<String> iter = file_meta.keySet().iterator();
+				while (iter.hasNext()) {
+					String key = iter.next();
+					if (key.split("_")[0].equals(filename)) {
+						file_meta.remove(key);
+					}
+				}
+			}
+			
 			boolean ops_fail = false;
 			try {
 				FileWriter fw = new FileWriter("./"+hostname+"/"+blk, false);
@@ -142,11 +155,7 @@ class Operation extends Thread {
 				// update local meta data
 				// atomic operation
 				synchronized(file_meta) {
-					if (file_meta.containsKey(blk)) {
-						file_meta.replace(blk, text.length());
-					} else {
-						file_meta.put(blk, text.length());
-					}
+					file_meta.put(blk, text.length());
 				}
 			} catch (IOException e) {
 				ops_fail = true;

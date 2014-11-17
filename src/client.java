@@ -32,6 +32,8 @@ public class client {
 			String line;
 			// input file readline
 			while ((line = br.readLine()) != null) {
+				if (line.isEmpty()) continue;
+				
 				String m_server = "dc30";  //hardcode dc30 as metadata server
 				Socket m_s = new Socket(m_server + ".utdallas.edu", 8821);  // socket connection to metadata server
 				ObjectOutputStream m_output = new ObjectOutputStream(m_s.getOutputStream());
