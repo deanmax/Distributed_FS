@@ -157,7 +157,93 @@ public class meta_server {
 				
 				
 				else if (t == ReqType.APPEND) {
+					MetaRequest req = (MetaRequest) input.readObject();
+					String filename = req.filename;
+					int append_len = req.length;
+					
+					if (!meta_table.containsKey(filename)) {
+						output.writeObject(new MetaResponse());
+						continue;
+					}
+					
+					// check all blocks availability
+					boolean valid = true;
+					synchronized(meta_table) {
+						Iterator<MetaData> it = meta_table.get(filename).iterator();
+						while (it.hasNext()) {
+							MetaData entry = it.next();
+							if (!entry.isValid) {
+								valid = false;
+								break;
+							}
+						}
+					}
+					if (!valid) {
+						output.writeObject(new MetaResponse());
+						continue;
+					}
+					
+					
+					ArrayList<String> al_f_server     = new ArrayList<String>();
+					ArrayList<Integer> al_append_len  = new ArrayList<Integer>();
+					
+					int blk_to_start = meta_table.get(filename).size() - 1;
+					if (meta_table.get(filename).get(blk_to_start).eff_length == 8192) {
+						blk_to_start += 1;
+					} else if (meta_table.get(filename).get(blk_to_start).eff_length < 8192) {
+						int remain_size = 8192 - meta_table.get(filename).get(blk_to_start).eff_length;
+						append_len -= remain_size / 2048 * 2048;
+						al_f_server.add(meta_table.get(filename).get(blk_to_start).f_server);
+						al_append_len.add(remain_size);
+					} else {
+						// should never goto here
+						System.out.println("Fatal Error: block size larger than 8192 on server"+
+								meta_table.get(filename).get(blk_to_start).f_server+"!");
+						System.exit(255);
+					}
+					
+					for (; append_len > 0; append_len -= 8192) {
+						int rand = (int)(Math.random()*alive_server.size());
+						al_f_server.add(alive_server.get(rand));
+						al_append_len.add((append_len < 8192) ? append_len: 8192);
+					}
+					
+					MetaResponse res = new MetaResponse();
+					res.start_blk_id = blk_to_start;
+					res.file_server  = al_f_server.toArray(new String[al_f_server.size()]);
+					res.eff_length   = new int[al_append_len.size()];
+					for (int i = 0; i < al_append_len.size(); i++) {
+						res.eff_length[i] = al_append_len.get(i);
+					}
+					output.writeObject(res);
+					
 					// need to wait for client reply job done to update meta_table
+					MetaRequest confirm = (MetaRequest) input.readObject();
+					
+					if (confirm.type == ReqType.RESULT && confirm.result) {
+						synchronized(meta_table) {
+							for (int i = 0; i < al_f_server.size(); i++) {
+								if (meta_table.get(filename).size() == blk_to_start + i + 1) {
+									// update existing record (last block)
+									if (req.length < res.eff_length[0]) {
+										meta_table.get(filename).get(blk_to_start).eff_length += req.length;
+									} else {
+										meta_table.get(filename).get(blk_to_start).eff_length = 8192;
+									}
+									meta_table.get(filename).get(blk_to_start).update_time = timestamp;
+									continue;
+								}
+								
+								MetaData entry = new MetaData();
+								entry.f_server = al_f_server.get(i);
+								entry.eff_length = al_append_len.get(i);
+								entry.blk_id = blk_to_start + i;
+								entry.filename = filename;
+								entry.update_time = timestamp;
+								meta_table.get(filename).add(entry);
+							}
+						}
+					}
 					
 				}
 				

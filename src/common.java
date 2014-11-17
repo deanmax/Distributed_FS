@@ -33,10 +33,10 @@ class MetaRequest implements Serializable {
 class MetaResponse implements Serializable {
 	String[] file_server = {};   // file server name of index'ed block
 	int[] eff_length = {};       // effective byte length of index'ed block
-	int[] pos = {};              // starting position for read/append
+	int[] pos = {};              // starting position for read
 	int start_blk_id = 0;        // offset of block index
 	
-	boolean isNull = false;      // flag indicating if the last block should be
+	//boolean isNull = false;      // flag indicating if the last block should be
     							 // filled with \0 for append
 }
 

@@ -168,7 +168,42 @@ class Operation extends Thread {
 		
 		// append request
 		else if (req.type == ReqType.APPEND) {
+			String blk = req.block;
+			String text = req.text;
+			boolean ops_fail = false;
+			try {
+				FileWriter fw = new FileWriter("./"+hostname+"/"+blk, true);
+				BufferedWriter bw = new BufferedWriter(fw);
+				bw.write(text);
+				bw.flush();
+				bw.close();
+				
+				// update local meta data
+				// atomic operation
+				synchronized(file_meta) {
+					if (file_meta.containsKey(blk)) {
+						int old_len = file_meta.get(blk);
+						file_meta.replace(blk, old_len+text.length());
+					} else {
+						file_meta.put(blk, text.length());
+					}
+				}
+			} catch (IOException e) {
+				ops_fail = true;
+				e.printStackTrace();
+			}
 			
+			// send ops result back to client
+			try {
+				DataOutputStream to_client = new DataOutputStream(socket.getOutputStream());
+				if (ops_fail) {
+					to_client.writeChar('n');
+				} else {
+					to_client.writeChar('y');
+				}
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
 		}
 		
 		// read request
