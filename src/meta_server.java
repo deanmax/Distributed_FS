@@ -101,10 +101,24 @@ public class meta_server {
 				else if (t == ReqType.CREATE) {
 					MetaRequest req = (MetaRequest) input.readObject();
 					
-					// need to remove existing file entry
+					// need to remove existing file entry both locally and on file server
 					String filename = req.filename;
-					synchronized(meta_table) {
-						meta_table.remove(filename);
+					OpsRequest purge_req = new OpsRequest(ReqType.PURGE, filename);
+					
+					if (meta_table.containsKey(filename)) {
+						synchronized(meta_table) {
+							// iterate all blocks of given file, send purge request to residing file server
+							Iterator<MetaData> it = meta_table.get(filename).iterator();
+							while (it.hasNext()) {
+								MetaData entry = it.next();
+								Socket s = new Socket(entry.f_server + ".utdallas.edu", 8822);
+								ObjectOutputStream f_output = new ObjectOutputStream(s.getOutputStream());
+								f_output.writeObject(purge_req);
+							}
+							
+							// remove local metadata entry
+							meta_table.remove(filename);
+						}
 					}
 					
 					int num_of_blks = req.length / 8192;

@@ -45,15 +45,16 @@ class MetaResponse implements Serializable {
 @SuppressWarnings("serial")
 class OpsRequest implements Serializable {
 	ReqType type;
+	String filename = "";
 	String block = "";
 	String text = "";
 	int pos = 0;
 	int read_length = 0;
 	
 	// PURGE request
-	OpsRequest(ReqType type, String block) {
+	OpsRequest(ReqType type, String filename) {
 		this.type = type;
-		this.block = block;
+		this.filename = filename;
 	}
 	
 	// CREATE/APPEND request
@@ -88,6 +89,6 @@ enum ReqType {
     READ, CREATE, APPEND,   // request initiated from client
     HEARTBEAT,              // request initiated from file server
     RESULT,                 // send from client, indicate if metadata is good to commit
-    PROBE                   // request initiated from file server asking for meta data
-    //PURGE                   // request initiated from meta server to purge files on file server
+    PROBE,                  // request initiated from file server asking for meta data
+    PURGE                   // request initiated from meta server to purge meta data on file server
 }

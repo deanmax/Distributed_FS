@@ -127,6 +127,22 @@ class Operation extends Thread {
 	
 	public void run() {
 		
+		// purge request, purge local meta data related to given filename
+		if (req.type == ReqType.PURGE) {
+			String filename = req.filename;
+			
+			// remove all local metadata regarding requested filename
+			synchronized(file_meta) {
+				Iterator<String> iter = file_meta.keySet().iterator();
+				while (iter.hasNext()) {
+					String key = iter.next();
+					if (key.split("_")[0].equals(filename)) {
+						file_meta.remove(key);
+					}
+				}
+			}
+		}
+		
 		// write request
 		if (req.type == ReqType.CREATE) {
 			String blk = req.block;
