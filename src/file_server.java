@@ -1,5 +1,6 @@
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileReader;
@@ -68,7 +69,7 @@ public class file_server {
 					while (iter.hasNext()) {
 						MetaData entry = iter.next();
 						
-						if (entry.f_server.equals(hostname) && 
+						if (entry.f_server.containsKey(hostname) && 
 								file.getName().equals(entry.filename+"_"+entry.blk_id)) {
 							synchronized(file_meta) {
 								file_meta.put(entry.filename+"_"+entry.blk_id, entry.eff_length);
@@ -88,7 +89,7 @@ public class file_server {
 		
 		
 		// start a thread to send heartbeat to meta server
-		new HeartBeat(file_meta).start();
+		new HeartBeat(file_meta, hostname).start();
 		
 		try {
 			ServerSocket listenSocket = new ServerSocket(8822);
@@ -127,18 +128,39 @@ class Operation extends Thread {
 	
 	public void run() {
 		
-		// purge request, purge local meta data related to given filename
-		if (req.type == ReqType.PURGE) {
-			String filename = req.filename;
+		// replicate request
+		if (req.type == ReqType.REPLICATE) {
+			String blk = req.block;
+			String[] replica_server = req.to_replicate;
+			String fileContents = "";
 			
-			// remove all local metadata regarding requested filename
-			synchronized(file_meta) {
-				Iterator<String> iter = file_meta.keySet().iterator();
-				while (iter.hasNext()) {
-					String key = iter.next();
-					if (key.split("_")[0].equals(filename)) {
-						file_meta.remove(key);
-					}
+			FileReader fr;
+			try {
+				fr = new FileReader("./"+hostname+"/"+blk);
+				int i;
+				while((i=fr.read()) != -1){
+					char ch = (char) i;
+					fileContents = fileContents + ch; 
+				}
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+			
+			// create file on other replicate server
+			for (String replica : replica_server) {
+				System.out.println("Replicate file "+blk+" to "+replica);
+				OpsRequest req = new OpsRequest(ReqType.CREATE, blk, fileContents, new String[]{});
+				try {
+					// setup socket connection to file server
+					Socket s = new Socket(replica + ".utdallas.edu", 8822);
+					ObjectOutputStream f_output = new ObjectOutputStream(s.getOutputStream());
+					DataInputStream f_input = new DataInputStream(s.getInputStream());
+        			
+					f_output.writeObject(req);
+					f_input.readChar();
+				} catch (Exception ex) {
+					//ex.printStackTrace();
+					System.out.println("Error communicating with replica server " + replica);
 				}
 			}
 		}
@@ -148,8 +170,9 @@ class Operation extends Thread {
 			String blk = req.block;
 			String filename = blk.split("_")[0];
 			String text = req.text;
+			String[] replica_server = req.to_replicate;
 			
-			// remove all local metadata regarding requested file block
+			// remove all local metadata regarding requested filename
 			synchronized(file_meta) {
 				Iterator<String> iter = file_meta.keySet().iterator();
 				while (iter.hasNext()) {
@@ -168,22 +191,47 @@ class Operation extends Thread {
 				bw.flush();
 				bw.close();
 				
-				// update local meta data
-				// atomic operation
-				synchronized(file_meta) {
-					file_meta.put(blk, text.length());
+				// If I'm primary server, send replicate req to other file servers
+				for (String replica : replica_server) {
+					System.out.println("Replicate file "+blk+" to "+replica);
+					OpsRequest req = new OpsRequest(ReqType.CREATE, blk, text, new String[]{});
+					try {
+						// setup socket connection to file server
+						Socket s = new Socket(replica + ".utdallas.edu", 8822);
+						ObjectOutputStream f_output = new ObjectOutputStream(s.getOutputStream());
+						DataInputStream f_input = new DataInputStream(s.getInputStream());
+            			
+						f_output.writeObject(req);
+						char f_response = f_input.readChar();
+						
+						if (f_response == 'n') {
+							ops_fail = true;
+							break;
+						}
+						
+					} catch (Exception ex) {
+						//ex.printStackTrace();
+						System.out.println("Error communicating with replica server " + replica);
+						ops_fail = true;
+					}
 				}
+				
 			} catch (IOException e) {
 				ops_fail = true;
 				e.printStackTrace();
 			}
 			
-			// send ops result back to client
+			// send ops result back to requester
 			try {
 				DataOutputStream to_client = new DataOutputStream(socket.getOutputStream());
 				if (ops_fail) {
 					to_client.writeChar('n');
 				} else {
+					// update local meta data
+					// atomic operation
+					synchronized(file_meta) {
+						file_meta.put(blk, text.length());
+					}
 					to_client.writeChar('y');
 				}
 			} catch (IOException e) {
@@ -195,6 +243,7 @@ class Operation extends Thread {
 		else if (req.type == ReqType.APPEND) {
 			String blk = req.block;
 			String text = req.text;
+			String[] replica_server = req.to_replicate;
 			boolean ops_fail = false;
 			try {
 				FileWriter fw = new FileWriter("./"+hostname+"/"+blk, true);
@@ -203,16 +252,31 @@ class Operation extends Thread {
 				bw.flush();
 				bw.close();
 				
-				// update local meta data
-				// atomic operation
-				synchronized(file_meta) {
-					if (file_meta.containsKey(blk)) {
-						int old_len = file_meta.get(blk);
-						file_meta.replace(blk, old_len+text.length());
-					} else {
-						file_meta.put(blk, text.length());
+				// If I'm primary server, send replicate req to other file servers
+				for (String replica : replica_server) {
+					System.out.println("Replicate file "+blk+" to "+replica);
+					OpsRequest req = new OpsRequest(ReqType.APPEND, blk, text, new String[]{});
+					try {
+						// setup socket connection to file server
+						Socket s = new Socket(replica + ".utdallas.edu", 8822);
+						ObjectOutputStream f_output = new ObjectOutputStream(s.getOutputStream());
+						DataInputStream f_input = new DataInputStream(s.getInputStream());
+            			
+						f_output.writeObject(req);
+						char f_response = f_input.readChar();
+						
+						if (f_response == 'n') {
+							ops_fail = true;
+							break;
+						}
+						
+					} catch (Exception ex) {
+						//ex.printStackTrace();
+						System.out.println("Error communicating with replica server " + replica);
+						ops_fail = true;
 					}
 				}
+				
 			} catch (IOException e) {
 				ops_fail = true;
 				e.printStackTrace();
@@ -224,6 +288,16 @@ class Operation extends Thread {
 				if (ops_fail) {
 					to_client.writeChar('n');
 				} else {
+					// update local meta data
+					// atomic operation
+					synchronized(file_meta) {
+						if (file_meta.containsKey(blk)) {
+							int old_len = file_meta.get(blk);
+							file_meta.replace(blk, old_len+text.length());
+						} else {
+							file_meta.put(blk, text.length());
+						}
+					}
 					to_client.writeChar('y');
 				}
 			} catch (IOException e) {
@@ -270,9 +344,13 @@ class Operation extends Thread {
 
 class HeartBeat extends Thread {
 	ConcurrentHashMap<String, Integer> file_meta;
+	String hostname;
+	int disk_size = 24576;  // bytes
+	int space_left = disk_size;
 	
-	public HeartBeat(ConcurrentHashMap<String, Integer> file_meta) {
+	public HeartBeat(ConcurrentHashMap<String, Integer> file_meta, String hostname) {
 		this.file_meta = file_meta;
+		this.hostname = hostname;
 	}
 	
 	public void run() {
@@ -286,12 +364,16 @@ class HeartBeat extends Thread {
 				
 				// heart beat message is an ArrayList with each element having block_name and size
 				ArrayList<MetaRequest> hb = new ArrayList<MetaRequest>();
+				DataNode node = new DataNode(hostname, disk_size, space_left);
+				
 				synchronized(file_meta) {
 					for (Entry<String, Integer> e: file_meta.entrySet()) {
 						hb.add(new MetaRequest(ReqType.HEARTBEAT, e.getKey(), e.getValue()));
+						space_left -= e.getValue();
 					}
+					node.space_left = space_left;
 					m_output.writeObject(ReqType.HEARTBEAT);
-					m_output.writeObject(hb);
+					m_output.writeObject(new HeartBeatMsg(hb, node));
 					//m_input.skip(m_input.available());
 					//while(m_input.available() == 0) {}  // wait for meta server reply to terminate connection
 				}

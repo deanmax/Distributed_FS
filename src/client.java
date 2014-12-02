@@ -1,12 +1,13 @@
 import java.io.BufferedReader;
 import java.io.DataInputStream;
-import java.io.DataOutputStream;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.Socket;
+import java.util.ArrayList;
+import java.util.HashSet;
 
 
 
@@ -57,7 +58,7 @@ public class client {
 					MetaResponse meta_res = (MetaResponse) m_input.readObject();
 					
 					// check allocated file servers
-					if (meta_res.file_server.length == 0) {
+					if (meta_res.file_server.size() == 0) {
 						System.out.println("No file server available according to meta-server, write skipped...");
 						m_output.writeObject(new MetaRequest(ReqType.RESULT, false));
 						Thread.sleep(2000);
@@ -66,21 +67,23 @@ public class client {
 					
 					// send write request to file server
 					boolean write_result = true;
-					for (int i = 0; i < meta_res.file_server.length; i++) {
-						String server = meta_res.file_server[i];
+					for (int i = 0; i < meta_res.file_server.size(); i++) {
+						ArrayList<String> alloc_server = meta_res.file_server.get(i);
+						String primary = alloc_server.remove(0);  // first server is primary
+						String[] replica_server = alloc_server.toArray(new String[alloc_server.size()]);
 						String blk = filename + "_" + i;
 						String sub_text = text.substring(i*8192, i*8192+meta_res.eff_length[i]);
 						
-						OpsRequest req = new OpsRequest(ReqType.CREATE, blk, sub_text);
+						OpsRequest req = new OpsRequest(ReqType.CREATE, blk, sub_text, replica_server);
 						
 						boolean redo = false;  // flag indicating if file server operation succeeds or not
 						int retry = 0;
 						do {
 							try {
 								System.out.println("Write " +blk+ "(" +meta_res.eff_length[i]+ 
-										") to file server " +server);
+										") to file server " +primary);
 								// setup socket connection to file server
-								Socket s = new Socket(server + ".utdallas.edu", 8822);
+								Socket s = new Socket(primary + ".utdallas.edu", 8822);
 								ObjectOutputStream f_output = new ObjectOutputStream(s.getOutputStream());
 								DataInputStream f_input = new DataInputStream(s.getInputStream());
 	                			
@@ -94,7 +97,7 @@ public class client {
 								}
 							} catch (Exception ex) {
 								//ex.printStackTrace();
-								System.out.println("Error communicating with file server " + server);
+								System.out.println("Error communicating with file server " + primary);
 								redo = true;
 							}
 							
@@ -132,7 +135,7 @@ public class client {
 					MetaResponse meta_res = (MetaResponse) m_input.readObject();
 					
 					// check allocated file servers
-					if (meta_res.file_server.length == 0) {
+					if (meta_res.file_server.size() == 0) {
 						System.out.println("File unavailable according to meta-server, append skipped...");
 						m_output.writeObject(new MetaRequest(ReqType.RESULT, false));
 						Thread.sleep(2000);
@@ -144,19 +147,21 @@ public class client {
 					boolean append_result = true;
 					
 					//// append will not cross file
-					if (meta_res.file_server.length == 1) {
-						String server = meta_res.file_server[0];
+					if (meta_res.file_server.size() == 1) {
+						ArrayList<String> alloc_server = meta_res.file_server.get(0);
+						String primary = alloc_server.remove(0);  // first server is primary
+						String[] replica_server = alloc_server.toArray(new String[alloc_server.size()]);
 						String blk = filename + "_" + meta_res.start_blk_id;
-						OpsRequest req = new OpsRequest(ReqType.APPEND, blk, text);
+						OpsRequest req = new OpsRequest(ReqType.APPEND, blk, text, replica_server);
 						
 						boolean redo = false;  // flag indicating if file server operation succeeds or not
 						int retry = 0;
 						do {
 							try {
 								System.out.println("Append to " +blk+ "(" +text.length()+ 
-										") on file server " +server);
+										") on file server " +primary);
 								// setup socket connection to file server
-								Socket s = new Socket(server + ".utdallas.edu", 8822);
+								Socket s = new Socket(primary + ".utdallas.edu", 8822);
 								ObjectOutputStream f_output = new ObjectOutputStream(s.getOutputStream());
 								DataInputStream f_input = new DataInputStream(s.getInputStream());
 	                			
@@ -170,7 +175,7 @@ public class client {
 								}
 							} catch (Exception ex) {
 								//ex.printStackTrace();
-								System.out.println("Error communicating with file server " + server);
+								System.out.println("Error communicating with file server " + primary);
 								redo = true;
 							}
 							
@@ -188,8 +193,10 @@ public class client {
 					
 					// append will cross file
 					} else {
-						for (int i = 0; i < meta_res.file_server.length; i++) {
-							String server = meta_res.file_server[i];
+						for (int i = 0; i < meta_res.file_server.size(); i++) {
+							ArrayList<String> alloc_server = meta_res.file_server.get(i);
+							String primary = alloc_server.remove(0);  // first server is primary
+							String[] replica_server = alloc_server.toArray(new String[alloc_server.size()]);
 							String blk = filename + "_" + (meta_res.start_blk_id + i);
 							int actual_bytes = 0, null_bytes = 0;
 							
@@ -202,7 +209,7 @@ public class client {
 								null_bytes = 0;
 							}
 							String sub_text = text.substring(0, actual_bytes);
-							OpsRequest req = new OpsRequest(ReqType.APPEND, blk, sub_text);
+							OpsRequest req = new OpsRequest(ReqType.APPEND, blk, sub_text, replica_server);
 							
 							boolean redo = false;  // flag indicating if file server operation succeeds or not
 							int retry = 0;
@@ -211,9 +218,9 @@ public class client {
 								
 								try {
 									System.out.println("Append to " +blk+ "(" +sub_text.length()+ 
-											") on file server " +server);
+											") on file server " +primary);
 									// setup socket connection to file server
-									Socket s = new Socket(server + ".utdallas.edu", 8822);
+									Socket s = new Socket(primary + ".utdallas.edu", 8822);
 									ObjectOutputStream f_output = new ObjectOutputStream(s.getOutputStream());
 									DataInputStream f_input = new DataInputStream(s.getInputStream());
 		                			
@@ -227,7 +234,7 @@ public class client {
 									}
 								} catch (Exception ex) {
 									//ex.printStackTrace();
-									System.out.println("Error communicating with file server " + server);
+									System.out.println("Error communicating with file server " + primary);
 									redo = true;
 								}
 								
@@ -251,16 +258,16 @@ public class client {
 									null_chars[j] = '\0';
 								}
 								
-								req = new OpsRequest(ReqType.APPEND, blk, new String(null_chars));
+								req = new OpsRequest(ReqType.APPEND, blk, new String(null_chars), replica_server);
 								
 								redo = false;  // flag indicating if file server operation succeeds or not
 								retry = 0;
 								do {
 									try {
 										System.out.println("Append null characters to " +blk+ "(" +null_chars.length+ 
-												") on file server " +server);
+												") on file server " +primary);
 										// setup socket connection to file server
-										Socket s = new Socket(server + ".utdallas.edu", 8822);
+										Socket s = new Socket(primary + ".utdallas.edu", 8822);
 										ObjectOutputStream f_output = new ObjectOutputStream(s.getOutputStream());
 										DataInputStream f_input = new DataInputStream(s.getInputStream());
 			                			
@@ -274,7 +281,7 @@ public class client {
 										}
 									} catch (Exception ex) {
 										//ex.printStackTrace();
-										System.out.println("Error communicating with file server " + server);
+										System.out.println("Error communicating with file server " + primary);
 										redo = true;
 									}
 									
@@ -326,15 +333,16 @@ public class client {
 					MetaResponse meta_res = (MetaResponse) m_input.readObject();
 					
 					// check allocated file servers
-					if (meta_res.file_server.length == 0) {
+					if (meta_res.file_server.size() == 0) {
 						System.out.println("File not found according to meta-server, read skipped...");
 						Thread.sleep(2000);
 						continue;
 					}
 					
 					// send read request to file server
-					for (int i = 0; i < meta_res.file_server.length; i++) {
-						String server = meta_res.file_server[i];
+					for (int i = 0; i < meta_res.file_server.size(); i++) {
+						// pick a closet file server to read from
+						String server = getClosestServer(meta_res.file_server.get(i));
 						String blk = filename + "_" + (i+meta_res.start_blk_id);
 						int start_pos = meta_res.pos[i];
 						int read_len = meta_res.eff_length[i];
@@ -389,5 +397,11 @@ public class client {
 		} catch (IOException | InterruptedException | ClassNotFoundException e) {
 			System.out.println("Exception: "+e.getMessage());
 		}
+	}
+	
+	
+	// randomly pick a server as the closest server
+	public static String getClosestServer(ArrayList<String> f_server) {
+		return f_server.get((int)(f_server.size()*Math.random()));
 	}
 }
