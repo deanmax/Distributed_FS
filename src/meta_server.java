@@ -6,27 +6,15 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map.Entry;
-import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 
 
 
 public class meta_server {
-	
-	// comparator for alive_server set
-	static Comparator<DataNode> comparator = new Comparator<DataNode>() {
-		@Override
-        public int compare(DataNode dn1, DataNode dn2) {
-            if (dn1.space_left < dn2.space_left) return -1;
-            if (dn1.space_left > dn2.space_left) return 1;
-            return 0;
-        }
-	};
 	
 	public static void main(String[] args) {
 		// meta data table
@@ -36,8 +24,7 @@ public class meta_server {
 				new ConcurrentHashMap<String, List<MetaData>>();
 		// available server to create/append files
 		// sorted on space left
-		final SortedSet<DataNode> alive_server = Collections.synchronizedSortedSet(new TreeSet<DataNode>(comparator));
-		
+		final TreeSet<DataNode> alive_server = new TreeSet<DataNode>();
 		
 		// start meta data table validation process
 		new Validator(meta_table, alive_server).start();
@@ -65,7 +52,6 @@ public class meta_server {
 				
 				
 				if (t == ReqType.HEARTBEAT) {
-					@SuppressWarnings("unchecked")
 					HeartBeatMsg hb_message = (HeartBeatMsg) input.readObject();
 					ArrayList<MetaRequest> hb = hb_message.hb;
 					DataNode node = hb_message.node;
@@ -73,9 +59,12 @@ public class meta_server {
 					
 					// update alive servers
 					synchronized(alive_server) {
-						for (Iterator<DataNode> serv_it = alive_server.iterator(); serv_it.hasNext(); ) {
+						TreeSet<DataNode> alive_server_temp = new TreeSet<DataNode>(alive_server);
+						alive_server.clear();
+						for (Iterator<DataNode> serv_it = alive_server_temp.iterator(); serv_it.hasNext(); ) {
 							DataNode node_it = serv_it.next();
-							if (node_it.name.equals(node.name)) alive_server.remove(node_it);
+							if (node_it.name.equals(node.name)) continue;
+							alive_server.add(node_it);
 						}
 						alive_server.add(node);
 					}
@@ -86,6 +75,9 @@ public class meta_server {
                         System.out.print(n+", ");
                     }
                     System.out.println();
+                    for (Entry<String, List<MetaData>> e: meta_table.entrySet()) {
+                        System.out.println(e.getKey()+": "+e.getValue());
+                    }
 					*/
 					
 					if (hb.size() == 0) continue;
@@ -395,10 +387,10 @@ public class meta_server {
 // than 15 secs ago.
 class Validator extends Thread {
 	ConcurrentHashMap<String, List<MetaData>> meta_table;
-	SortedSet<DataNode> alive_server;
+	final TreeSet<DataNode> alive_server;
 	
 	Validator(ConcurrentHashMap<String, List<MetaData>> meta_table,
-			SortedSet<DataNode> alive_server) {
+			TreeSet<DataNode> alive_server) {
 		this.meta_table = meta_table;
 		this.alive_server = alive_server;
 	}
@@ -433,11 +425,14 @@ class Validator extends Thread {
 							if (curr_time - node.update_time > 15000) {  // millsecond
 								node.isValid = false;
 								
-								// remove un-responding file server
+								// remove server from alive_server set
 								synchronized (alive_server) {
-									for (Iterator<DataNode> serv_it = alive_server.iterator(); serv_it.hasNext(); ) {
+									TreeSet<DataNode> alive_server_temp = new TreeSet<DataNode>(alive_server);
+									alive_server.clear();
+									for (Iterator<DataNode> serv_it = alive_server_temp.iterator(); serv_it.hasNext(); ) {
 										DataNode node_avail = serv_it.next();
-										if (node_avail.name.equals(node.name)) alive_server.remove(node_avail);
+										if (node_avail.name.equals(node.name)) continue;
+										alive_server.add(node_avail);
 									}
 								}
 								
@@ -447,7 +442,7 @@ class Validator extends Thread {
 				}
 			}
 			
-			// TODO: check metadata table again,
+			// check metadata table again,
 			// 1. remove invalid datanode
 			// 2. create new file replica if replicas  < 3.
 			// if all datanodes for a block file are invalid, all will be kept
@@ -464,17 +459,18 @@ class Validator extends Thread {
 						
 						String primary = d.getValidReplicas().get(0);
 						
-						for (DataNode node : d.f_server.values()) {
+						ArrayList<DataNode> collection = new ArrayList<DataNode>(d.f_server.values());
+						for (DataNode node : collection) {
 							// delete invalid replica as long as there's at least one valid replica
 							if (!node.isValid && d.getValidReplicas().size() > 0) {
-								d.f_server.remove(node);
+								d.f_server.remove(node.name);
 							}
 						}
 						
 						// create backup replica if replica < 3
+						ArrayList<String> exist_replicas = d.getValidReplicas();
 						ArrayList<String> to_replica = new ArrayList<String>();
 						for (int i=d.getValidReplicas().size(); i<3; i++) {
-							ArrayList<String> exist_replicas = d.getValidReplicas();
 							if (alive_server.size() == 0) break;
 							
 							TreeSet<DataNode> avail_server_by_space = new TreeSet<DataNode>(alive_server);
@@ -487,19 +483,35 @@ class Validator extends Thread {
 									continue;
 								} else {
 									to_replica.add(node.name);
+									exist_replicas.add(node.name);
 									break;
 								}
 							}
 						}
 						
+						
+						//System.out.println("Blk: "+blk);
+                        //System.out.println("To Replica: "+to_replica);
 						if (!to_replica.isEmpty()) {
 							OpsRequest req = new OpsRequest(ReqType.REPLICATE, blk, to_replica.toArray(new String[to_replica.size()]));
 							try {
 								// setup socket connection to file server
 								Socket s = new Socket(primary + ".utdallas.edu", 8822);
 								ObjectOutputStream f_output = new ObjectOutputStream(s.getOutputStream());
-			        			
 								f_output.writeObject(req);
+								
+								DataInputStream f_input = new DataInputStream(s.getInputStream());
+								char f_response = f_input.readChar();
+								
+								// replication finished successfully, update metadata accordingly
+								// replica server data node info is just a place holder,
+								// it will be updated by next heartbeat message
+								if (f_response == 'y') {
+									for (String replica_server : to_replica) {
+										d.f_server.put(replica_server, new DataNode(replica_server));
+									}
+								}
+								
 							} catch (Exception ex) {
 								//ex.printStackTrace();
 								System.out.println("Error communicating with replica server " + primary);

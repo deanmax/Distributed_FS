@@ -134,6 +134,7 @@ class Operation extends Thread {
 			String[] replica_server = req.to_replicate;
 			String fileContents = "";
 			
+			boolean ops_fail = false;
 			FileReader fr;
 			try {
 				fr = new FileReader("./"+hostname+"/"+blk);
@@ -157,11 +158,28 @@ class Operation extends Thread {
 					DataInputStream f_input = new DataInputStream(s.getInputStream());
         			
 					f_output.writeObject(req);
-					f_input.readChar();
+					char f_response = f_input.readChar();
+					
+					if (f_response == 'n') {
+						ops_fail = true;
+						break;
+					}
 				} catch (Exception ex) {
 					//ex.printStackTrace();
 					System.out.println("Error communicating with replica server " + replica);
 				}
+			}
+			
+			// send ops result back to requester
+			try {
+				DataOutputStream to_client = new DataOutputStream(socket.getOutputStream());
+				if (ops_fail) {
+					to_client.writeChar('n');
+				} else {
+					to_client.writeChar('y');
+				}
+			} catch (IOException e) {
+				e.printStackTrace();
 			}
 		}
 		
@@ -346,7 +364,6 @@ class HeartBeat extends Thread {
 	ConcurrentHashMap<String, Integer> file_meta;
 	String hostname;
 	int disk_size = 24576;  // bytes
-	int space_left = disk_size;
 	
 	public HeartBeat(ConcurrentHashMap<String, Integer> file_meta, String hostname) {
 		this.file_meta = file_meta;
@@ -355,6 +372,7 @@ class HeartBeat extends Thread {
 	
 	public void run() {
 		while (true) {
+			int space_left = disk_size;
 			try {
 				// send heartbeat to meta server
 				String m_server = "dc30";  // hardcode dc30 as metadata server

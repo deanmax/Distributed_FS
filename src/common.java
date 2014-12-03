@@ -117,7 +117,8 @@ class MetaData implements Serializable {
 }
 
 
-class HeartBeatMsg {
+@SuppressWarnings("serial")
+class HeartBeatMsg implements Serializable {
 	ArrayList<MetaRequest> hb;
 	DataNode node;
 	
@@ -134,7 +135,8 @@ class HeartBeatMsg {
 
 
 // file server info
-class DataNode {
+@SuppressWarnings("serial")
+class DataNode implements Serializable, Comparable<DataNode> {
 	String name = "";
 	int disk_size = 0;
 	int space_left = 0;
@@ -142,6 +144,8 @@ class DataNode {
 	boolean isValid = true;
 	
 	DataNode() {}
+	
+	DataNode(String name) {this.name = name;}
 	
 	DataNode(String name, int size, int left) {
 		this.name = name;
@@ -151,7 +155,17 @@ class DataNode {
 	
 	@Override
 	public String toString() {
-		return name + "," + disk_size + "," + space_left;
+		return name + "," + disk_size + "," + space_left + "," + isValid;
+	}
+
+	@Override
+	public int compareTo(DataNode o) {
+		if (this.name.equalsIgnoreCase(o.name)) {
+			return 0;
+		} else {
+			if (this.space_left <= o.space_left) return -1;
+            return 1;
+		}
 	}
 }
 
