@@ -153,7 +153,8 @@ public class meta_server {
 							ArrayList<String> replica_server = new ArrayList<String>();
 							// choose up to 3 alive servers to write to(order by space left, descending)
 							TreeSet<DataNode> avail_server_by_space = new TreeSet<DataNode>(alive_server);
-							for (int j=0; j<(avail_server_by_space.size()>3?3:avail_server_by_space.size()); j++) {
+							int size = avail_server_by_space.size();
+							for (int j=0; j<(size>3?3:size); j++) {
 								replica_server.add(avail_server_by_space.pollLast().name);
 							}
 							alloc_server.add(replica_server);
@@ -245,7 +246,8 @@ public class meta_server {
 						ArrayList<String> replica_server = new ArrayList<String>();
 						// choose up to 3 alive servers to write to(order by space left, descending)
 						TreeSet<DataNode> avail_server_by_space = new TreeSet<DataNode>(alive_server);
-						for (int j=0; j<(avail_server_by_space.size()>3?3:avail_server_by_space.size()); j++) {
+						int size = avail_server_by_space.size();
+						for (int j=0; j<(size>3?3:size); j++) {
 							replica_server.add(avail_server_by_space.pollLast().name);
 						}
 						al_f_server.add(replica_server);
@@ -476,7 +478,7 @@ class Validator extends Thread {
 							TreeSet<DataNode> avail_server_by_space = new TreeSet<DataNode>(alive_server);
 							DataNode node = avail_server_by_space.pollLast();
 							
-							while (node != null) {
+							while (node != null && exist_replicas.size() < 3) {
 								if (exist_replicas.contains(node.name)) {
 									// replica server already used, try next available server from pool
 									node = avail_server_by_space.pollLast();
