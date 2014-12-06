@@ -1,12 +1,12 @@
 Distributed_FS
 ==============
 
-Implementing a distributed file system in java. Initially with 2 clients, 3 servers and 1 meta-server.
+Implementing a distributed file system in java. There's 1 meta-server with no secondary meta-node. Support scalable file servers and clients, file server crash recovery & chunk replication(level = 3).
 
 * meta server must be running on dc30
 * meta server is designed to be always reliable. Once meta server crashes, all file information will be lost.
 * on file server recovery, it will validate all local files according to metadata from meta server
-* when doing write/append operation, a second write/append to the same filename will be blocked till the first one finishes or fails. 
+* when doing write/append operation, a second write/append to the same filename will be blocked till the first one finishes(replication process also needs to be done for the first operation). 
 
 ## How to run
 1. unzip archive
