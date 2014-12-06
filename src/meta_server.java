@@ -58,6 +58,7 @@ public class meta_server {
 					node.update_time = timestamp;
 					
 					// update alive servers
+					// remove data nodes that have space less than 8192 bytes
 					synchronized(alive_server) {
 						TreeSet<DataNode> alive_server_temp = new TreeSet<DataNode>(alive_server);
 						alive_server.clear();
@@ -66,7 +67,11 @@ public class meta_server {
 							if (node_it.name.equals(node.name)) continue;
 							alive_server.add(node_it);
 						}
-						alive_server.add(node);
+						if (node.space_left >= 8192) {
+							alive_server.add(node);
+						} else {
+							System.out.println("[Warning] File Server "+node.name+" Out of Space!");
+						}
 					}
 					
 					/*
@@ -144,7 +149,7 @@ public class meta_server {
 					ArrayList<ArrayList<String>> alloc_server = new ArrayList<ArrayList<String>>();
 					int[] alloc_length;
 					
-					if (alive_server.size() == 0) {
+					if (alive_server.size() < 3) {  // need at least 3 servers to do replicate
 						alloc_length = new int[0];
 					} else {
 						alloc_length = new int[elements];
@@ -217,41 +222,45 @@ public class meta_server {
 					
 					ArrayList<ArrayList<String>> al_f_server = new ArrayList<ArrayList<String>>();
 					ArrayList<Integer> al_append_len         = new ArrayList<Integer>();
-					
 					int blk_to_start = meta_table.get(filename).size() - 1;
-					if (meta_table.get(filename).get(blk_to_start).eff_length == 8192) {
-						blk_to_start += 1;
-					} else if (meta_table.get(filename).get(blk_to_start).eff_length < 8192) {
-						int remain_size = 8192 - meta_table.get(filename).get(blk_to_start).eff_length;
-						
-						if (remain_size >= append_len) {
-							append_len = 0;
-						} else {
-							append_len -= remain_size / 2048 * 2048;
-						}
-						
-						ArrayList<String> append_server = 
-								new ArrayList<String>(meta_table.get(filename).get(blk_to_start).f_server.keySet());
-						al_f_server.add(append_server);
-						al_append_len.add(remain_size);
-					} else {
-						// should never goto here
-						System.out.println("Fatal Error: block size larger than 8192 on server"+
-								meta_table.get(filename).get(blk_to_start).f_server+"!");
-						System.exit(255);
-					}
 					
-					// create new file for the rest of append
-					for (; append_len > 0; append_len -= 8192) {
-						ArrayList<String> replica_server = new ArrayList<String>();
-						// choose up to 3 alive servers to write to(order by space left, descending)
-						TreeSet<DataNode> avail_server_by_space = new TreeSet<DataNode>(alive_server);
-						int size = avail_server_by_space.size();
-						for (int j=0; j<(size>3?3:size); j++) {
-							replica_server.add(avail_server_by_space.pollLast().name);
+					if (alive_server.size() < 3) {  // need at least 3 servers to do replicate
+						al_append_len.add(0);
+					} else {
+						if (meta_table.get(filename).get(blk_to_start).eff_length == 8192) {
+							blk_to_start += 1;
+						} else if (meta_table.get(filename).get(blk_to_start).eff_length < 8192) {
+							int remain_size = 8192 - meta_table.get(filename).get(blk_to_start).eff_length;
+							
+							if (remain_size >= append_len) {
+								append_len = 0;
+							} else {
+								append_len -= remain_size / 2048 * 2048;
+							}
+							
+							ArrayList<String> append_server = 
+									new ArrayList<String>(meta_table.get(filename).get(blk_to_start).f_server.keySet());
+							al_f_server.add(append_server);
+							al_append_len.add(remain_size);
+						} else {
+							// should never goto here
+							System.out.println("Fatal Error: block size larger than 8192 on server"+
+									meta_table.get(filename).get(blk_to_start).f_server+"!");
+							System.exit(255);
 						}
-						al_f_server.add(replica_server);
-						al_append_len.add((append_len < 8192) ? append_len: 8192);
+						
+						// create new file for the rest of append
+						for (; append_len > 0; append_len -= 8192) {
+							ArrayList<String> replica_server = new ArrayList<String>();
+							// choose up to 3 alive servers to write to(order by space left, descending)
+							TreeSet<DataNode> avail_server_by_space = new TreeSet<DataNode>(alive_server);
+							int size = avail_server_by_space.size();
+							for (int j=0; j<(size>3?3:size); j++) {
+								replica_server.add(avail_server_by_space.pollLast().name);
+							}
+							al_f_server.add(replica_server);
+							al_append_len.add((append_len < 8192) ? append_len: 8192);
+						}
 					}
 					
 					MetaResponse res = new MetaResponse();

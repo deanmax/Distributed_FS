@@ -91,6 +91,7 @@ public class file_server {
 		// start a thread to send heartbeat to meta server
 		new HeartBeat(file_meta, hostname).start();
 		
+		// main logic
 		try {
 			ServerSocket listenSocket = new ServerSocket(8822);
 			System.out.println("Start listening on port 8822...");
@@ -100,7 +101,7 @@ public class file_server {
 				ObjectInputStream input = new ObjectInputStream(clientSocket.getInputStream());
 				
 				OpsRequest req = (OpsRequest)input.readObject();
-				System.out.println(req.type+ " request from " +from_host);
+				System.out.println(req.type+ " request from " +from_host+ " for "+req.block);
 				new Operation(req, clientSocket, file_meta, hostname).start();  // each new thread handle one request
 			}
 		} catch (IOException | ClassNotFoundException e) {
@@ -363,7 +364,7 @@ class Operation extends Thread {
 class HeartBeat extends Thread {
 	ConcurrentHashMap<String, Integer> file_meta;
 	String hostname;
-	int disk_size = 24576;  // bytes
+	int disk_size = 32768;  // 32K bytes
 	
 	public HeartBeat(ConcurrentHashMap<String, Integer> file_meta, String hostname) {
 		this.file_meta = file_meta;

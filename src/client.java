@@ -134,7 +134,7 @@ public class client {
 					
 					// check allocated file servers
 					if (meta_res.file_server.size() == 0) {
-						System.out.println("File unavailable according to meta-server, append skipped...");
+						System.out.println("File server unavailable according to meta-server, append skipped...");
 						m_output.writeObject(new MetaRequest(ReqType.RESULT, false));
 						Thread.sleep(2000);
 						continue;
