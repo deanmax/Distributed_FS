@@ -18,3 +18,4 @@ Implementing a distributed file system in java. There's 1 meta-server with no se
 ## Note
 * make sure you have a JDK version at least 1.7 to compile and run this program.
 * there's no logs. all logs will be printed out to the standart output
+* file server space limit is set to 32K bytes
