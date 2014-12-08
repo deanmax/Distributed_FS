@@ -134,13 +134,25 @@ public class meta_server {
 				else if (t == ReqType.CREATE) {
 					MetaRequest req = (MetaRequest) input.readObject();
 					String filename = req.filename;
-					
-					// need to remove local metadata entry if exists
-					if (meta_table.containsKey(filename)) {
-						synchronized(meta_table) {
-							meta_table.remove(filename);
-						}
-					}
+					OpsRequest purge_req = new OpsRequest(ReqType.PURGE, filename);
+
+                    if (meta_table.containsKey(filename)) {
+                        synchronized(meta_table) {
+                            // iterate all blocks of given file, send purge request to all replica servers
+                            Iterator<MetaData> it = meta_table.get(filename).iterator();
+                            while (it.hasNext()) {
+                                MetaData entry = it.next();
+                                for (String f_server: entry.f_server.keySet()) {
+                                	Socket s = new Socket( f_server+".utdallas.edu", 8822);
+                                    ObjectOutputStream f_output = new ObjectOutputStream(s.getOutputStream());
+                                    f_output.writeObject(purge_req);
+                                }
+                            }
+
+                            // remove local metadata entry
+                            meta_table.remove(filename);
+                        }
+                    }
 					
 					int num_of_blks = req.length / 8192;
 					int remainder = req.length % 8192;

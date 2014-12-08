@@ -55,13 +55,11 @@ class OpsRequest implements Serializable {
 	int pos = 0;
 	int read_length = 0;
 	
-	/*
 	// PURGE request
 	OpsRequest(ReqType type, String filename) {
 		this.type = type;
 		this.filename = filename;
 	}
-	*/
 	
 	// REPLICATE request
 	OpsRequest(ReqType type, String block, String[] to_replicate) {
@@ -175,6 +173,6 @@ enum ReqType {
     HEARTBEAT,              // request initiated from file server
     RESULT,                 // send from client, indicate if metadata is good to commit
     PROBE,                  // request initiated from file server asking for meta data
-    //PURGE,                  // request initiated from meta server to purge meta data on file server
+    PURGE,                  // request initiated from meta server to purge meta data on file server
     REPLICATE,              // request initiated from meta server to replicate file block
 }
